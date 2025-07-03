@@ -7,7 +7,7 @@ from datetime import datetime
 from joblib import Parallel, delayed, hash
 
 from .callback import _Callback
-from .benchmark import Benchmark
+from .benchmark import Benchmark, set_running_benchmark
 from .utils.sys_info import get_sys_info
 from .utils.files import uniquify_results
 from .utils.pdb_helpers import exception_handler
@@ -200,6 +200,8 @@ def run_one_solver(benchmark, dataset, objective, solver, n_repetitions,
     run_statistics : list
         The benchmark results.
     """
+
+    set_running_benchmark(benchmark)
 
     run_one_to_cvg_cached = benchmark.cache(
         run_one_to_cvg, ignore=['force', 'output', 'pdb'], collect=collect

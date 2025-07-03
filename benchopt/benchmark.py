@@ -48,6 +48,10 @@ def get_running_benchmark():
     """Return the benchmark currently running."""
     return _RUNNING_BENCHMARK
 
+def set_running_benchmark(benchmark):
+    """Set the benchmark currently running."""
+    global _RUNNING_BENCHMARK
+    _RUNNING_BENCHMARK = benchmark
 
 class Benchmark:
     """Benchmark exposes all constituents of the benchmark folder.
@@ -77,8 +81,7 @@ class Benchmark:
         self.benchmark_dir = Path(benchmark_dir)
         self.no_cache = no_cache
 
-        global _RUNNING_BENCHMARK
-        _RUNNING_BENCHMARK = self
+        set_running_benchmark(self)
         set_benchmark_module(self.benchmark_dir)
 
         # Load the benchmark metadat defined in `objective.py` or
