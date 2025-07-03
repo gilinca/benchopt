@@ -57,7 +57,7 @@ def run_one_resolution(objective, solver, meta, stop_val):
     objective_list = objective(result)
 
     # Add system info in results
-    info = get_sys_info()
+    info = get_sys_info() # MPIC : I don't know how is handled the case where inside a single run sys info differs
 
     return [
         dict(**meta, stop_val=stop_val, time=delta_t, **objective_dict, **info)
@@ -110,21 +110,20 @@ def run_one_to_cvg(benchmark, objective, solver, meta, stopping_criterion,
     has_save_final_results = objective.save_final_results is not base_method
     if has_save_final_results:
         final_results = benchmark.get_output_folder() / 'final_results'
-        final_results /= f"{hash(meta)}.pkl"
+        final_results /= f"{hash(meta)}.pkl" # MPIC : hash(meta) is not unique for each worker, so the final results will be overwritten by the last worker, meta should be extended with the rank of the worker
         final_results.parent.mkdir(exist_ok=True, parents=True)
         meta["final_results"] = str(final_results)
 
-    with exception_handler(output, pdb=pdb) as ctx:
-
+    with exception_handler(output, pdb=pdb) as ctx: # MPIC : pdb can't be used in parallel (and a fortiori for MPI based code), so a check should be done to not use it in the parallel case
         if solver._solver_strategy == "callback":
 
             # If sampling_strategy is 'callback', only call once to get the
             # results up to convergence.
             callback = _Callback(
                 objective, solver, meta, stopping_criterion
-            )
+            )      # MPIC : no flexibility to change the callback, and if one callback decide to stop so should do the others which is not implemented in callback 
             solver.pre_run_hook(callback)
-            callback.start()
+            callback.start() # MPIC : Could be nice to rely on MPI.Wtime() instead of time.perf_counter() to have a consistent time across workers, but this is not implemented in the current code
             solver.run(callback)
             curve, ctx.status = callback.get_results()
         else:
@@ -132,7 +131,7 @@ def run_one_to_cvg(benchmark, objective, solver, meta, stopping_criterion,
             # Create a Memory object to cache the computations in the benchmark
             # folder and handle cases where we force the run.
             run_one_resolution_cached = benchmark.cache(
-                run_one_resolution, force
+                run_one_resolution, force # MPIC : all workers have the same arguments, so with cache will return same output, not intended behaviour, fix could be to import mpi4py in reconstruct method and set rank as attribute at that specific moment
             )
 
             # compute initial value
@@ -202,7 +201,7 @@ def run_one_solver(benchmark, dataset, objective, solver, n_repetitions,
     """
 
     run_one_to_cvg_cached = benchmark.cache(
-        run_one_to_cvg, ignore=['force', 'output', 'pdb'], collect=collect
+        run_one_to_cvg, ignore=['force', 'output', 'pdb'], collect=collect # MPIC : all workers have the same arguments, so with cache will return same output, not intended behaviour, fix could be to import mpi4py in reconstruct method and set rank as attribute at that specific moment
     )
     if collect:
         _run_one_to_cvg_cached = run_one_to_cvg_cached
@@ -259,7 +258,7 @@ def run_one_solver(benchmark, dataset, objective, solver, n_repetitions,
             'sampling_strategy': sampling_strategy.capitalize(),
             **{f"p_obj_{k}": v for k, v in objective._parameters.items()},
             **{f"p_solver_{k}": v for k, v in solver._parameters.items()},
-            **{f"p_dataset_{k}": v for k, v in dataset._parameters.items()},
+            **{f"p_dataset_{k}": v for k, v in dataset._parameters.items()}, # MPIC : would be natural for the rank to be added here, but it is not the case in the current implementation
         }
 
         stopping_criterion = solver._stopping_criterion.get_runner_instance(
@@ -294,7 +293,8 @@ def run_one_solver(benchmark, dataset, objective, solver, n_repetitions,
         else:
             status = 'done'
 
-    output.show_status(status=status)
+    if not is_distributed or rank == 0:
+        output.show_status(status=status) # MPIC : in the case of multiple workers, the output is displayed by all workers, which is not intended behaviour and not easily fixable
     # Make sure to flush so the parallel output is properly display
     print(end='', flush=True)
 
@@ -387,7 +387,7 @@ def _run_benchmark(benchmark, solvers=None, forced_solvers=None,
     if slurm is not None and not collect:
         from .utils.slurm_executor import run_on_slurm
         results = run_on_slurm(
-            benchmark, slurm, run_one_solver, common_kwargs,
+            benchmark, slurm, run_one_solver, common_kwargs, # MPIC : slurm_config should be also something sweepable (and included in cache arguments)
             all_runs
         )
     else:
@@ -396,7 +396,7 @@ def _run_benchmark(benchmark, solvers=None, forced_solvers=None,
             for kwargs in all_runs
         )
 
-    run_statistics = []
+    run_statistics = [] # MPIC maybe there will be the need to unwrap the results
     for curve in results:
         run_statistics.extend(curve)
 
